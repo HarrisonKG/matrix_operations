@@ -9,6 +9,6 @@ mean: output the mean of each column
 add: add two matrices  
 multiply: matrix multiplication  
   
-You can run it with ./matrix <operation>   
+You can run it with ./matrix [operation]
       
 All operations take one additional filename parameter, except for add and multiply, which take two
