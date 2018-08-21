@@ -1,0 +1,358 @@
+# Kristen Harrison
+# CS 344, block 1, matrix
+
+
+
+
+
+#!/bin/bash
+trap "rm -f validatedInput$$ transposeOutput$$ $$ meanOutput$$ addMatrix1$$ addMatrix2$$ sumMatrix$$ multMatrix1$$ multMatrix2$$ productMatrix$$; trap - EXIT" INT HUP TERM EXIT
+
+
+
+# NAME
+# 	validate - tests arguments to verify input is valid
+# SYNOPSIS
+#	Updates the variable $validatedInput or exits with an error
+# DESCRIPTION
+#	There should be zero arguments for stdin input or one filename argument,
+#	and the file must be readable
+
+validate ()
+{
+	validatedInput="validatedInput$$"
+
+	# there should be one filename parameter or zero parameters for stdin input
+	if [ $# -gt 1 ] 
+	then 
+		echo "Invalid number of arguments. Use one argument to use input from a file, or no args to use stdin." >&2
+		exit 5
+	# save parameter in tempfile if its readable
+	elif [ $# -eq 1 ]  
+	then
+		if [ -r "$1" ]
+		then
+			cat "$1" > $validatedInput
+		else
+			echo "The file could not be read." >&2
+			exit 3
+		fi
+	# otherwise save stdin to tempfile
+	else
+		# test if stdin is opened in the terminal
+		if [ -t 0 ] 
+		then
+			echo "Enter matrix data though stdin and press Cntl-D when done."
+		fi
+		cat > $validatedInput
+	fi
+}
+
+
+
+
+# NAME
+# 	dims - outputs the dimensions of a specified matrix
+# SYNOPSIS
+#	Prints "#ROWS #COLS"
+# DESCRIPTION
+#	Prints the dimensions as the number of rows, followed by a space, 
+# 	then the number of columns
+ 
+dims ()
+{
+	# send all arguments to validation function
+	validate "${@}"
+	dimsInput=$validatedInput
+
+	# check if saved file is readable
+	if [ -r $dimsInput ]
+	then
+		# count number of rows
+		numRows=0
+		while read newLine
+		do
+			numRows=$(expr $numRows + 1)
+		done < $dimsInput
+		
+		# count number of columns (tab-delineated)
+		numCols=0
+		read firstline < $dimsInput
+		for i in $firstline
+		do
+			numCols=$(expr $numCols + 1)
+		done
+
+		echo "$numRows $numCols"
+	else 
+		echo "file is not readable" >&2
+	fi
+}
+
+
+
+
+# NAME
+# 	transpose - reflects the elements of the matrix along the main diagonal
+# SYNOPSIS
+#	Prints a diagonal reflection of the matrix
+# DESCRIPTION
+#	An MxN matrix will become an NxM matrix and the values along the main 
+# 	diagonal will remain unchanged
+ 
+transpose()
+{
+	# validate arguments
+	validate "${@}"
+	transposeIn=$validatedInput
+	transposeOut="transposeOutput$$"
+
+	# check if file is readable
+	if [ -r $transposeIn ]
+	then
+		# check number of columns in matrix
+		numCols=0
+		read firstline < $transposeIn
+		for i in $firstline
+		do
+			numCols=$(expr $numCols + 1)
+		done
+
+		# cut each column and convert to new row
+		for ((i=1;i<=$numCols;i++))
+		do 
+			currentCol=$(cut -f "$i" $transposeIn)
+
+			# iterate through column, adding each element to the file to form a row
+			for num in $currentCol
+			do
+				echo -ne "$num\t" >> $transposeOut
+			done
+
+			# remove hanging tab and add newline to end of row
+			truncate -s-1 $transposeOut 
+			echo >> $transposeOut
+		done
+		cat "$transposeOut"
+
+	else 
+		echo "file is not readable" >&2
+		exit 3
+	fi
+}
+
+
+
+
+# NAME
+# 	mean - calculates and prints the mean value of each column
+# SYNOPSIS
+#	Prints [COL1_mean COL2_mean COL3_mean COL4_mean .. ]
+# DESCRIPTION
+#	Takes an MxN matrix and returns an 1xN row vector, where the first element 
+# 	is the mean of column one, the second element is the mean of column two, etc. 
+
+mean ()
+{
+	# validate arguments
+	validate "${@}"
+	meanInput=$validatedInput
+	meanOutput="meanOutput$$"
+
+	# check if file is readable
+	if [ -r $meanInput ]
+	then
+		# get number of columns
+		numCols=0
+		read firstline < $meanInput
+		for i in $firstline
+		do
+			numCols=$(expr $numCols + 1)
+		done
+
+		# iterate through columns and calculate mean
+		for ((i=1;i<=$numCols;i++))
+		do
+			# get each column by field number
+			currentCol=$(cut -f "$i" $meanInput)
+		    sum=0
+		    count=0
+
+		    # iterate through column to total all elements
+		    for num in $currentCol
+		    do
+		        sum=$(expr $sum + $num)
+		        count=$(expr $count + 1)
+		    done
+
+		    # round to nearest int and write to file
+		    roundedAvg=$(( (sum + (count/2)*((sum>0)*2-1))/count ))
+		    echo -ne "$roundedAvg\t" >> "$meanOutput"
+		done
+
+		# remove hanging tab and add newline to end of row
+		truncate -s-1 $meanOutput
+		echo >> "$meanOutput"
+		cat "$meanOutput"
+
+	else 
+		echo "The file is not readable" >&2
+		exit 3
+	fi
+}
+
+
+
+
+# NAME
+# 	add - adds two matrices of the same dimensions and prints the result
+# SYNOPSIS
+#	Prints the summed matrix, or an error if the dimensions don't match
+# DESCRIPTION
+#	Takes two MxN matrices and add them together element-wise to produce 
+# 	an MxN matrix
+
+add ()
+{
+	addMatrix1="addMatrix1$$"
+	addMatrix2="addMatrix2$$"
+	sumMatrix="sumMatrix$$"
+
+	# check for correct number of arguments
+	if [ $# -ne 2 ]
+	then 
+		echo "Invalid number of arguments. Use two arguments to use pass in two matrix files." >&2
+		exit 5
+	else 
+		# check if both files are readable
+		if [ -r "$1" ] && [ -r "$2" ] 
+		then
+			# save parameters to file and get dimensions
+			cat "$1" > $addMatrix1
+			cat "$2" > $addMatrix2
+			firstDims=$(dims "$addMatrix1")
+			secondDims=$(dims "$addMatrix2")
+			
+			# check that the dimensions are the same
+			if [[ "$firstDims" == "$secondDims" ]]
+			then
+				# grab the column number (second field)
+				numCols=$(echo $firstDims | cut -d ' ' -f 2) 
+				
+				# read parallel values from both files and sum
+				while read matrix1 0<&3 && read matrix2 0<&4
+				do
+					# add parallel values using column numbers
+					currentCol=1
+					for ((j=1;j<="$numCols";j++))
+					do 
+						# cut parallel column fields from each line and add
+						val1=$(echo "$matrix1" | cut -f "$currentCol")
+						val2=$(echo "$matrix2" | cut -f "$currentCol")
+						val3=$(( val1 + val2 ))
+
+						# write to file and increment
+						echo -ne "$val3\t" >> $sumMatrix
+						currentCol=$(expr $currentCol + 1)
+					done
+
+					# remove hanging tab and add newline to end of row
+					truncate -s-1 $sumMatrix
+					echo >> $sumMatrix
+
+				done 3<"$addMatrix1" 4<"$addMatrix2"
+				cat "$sumMatrix"
+
+			else
+				echo "The matrix dimensions are different so they can't be added." >&2
+				exit 4
+			fi
+		else 
+			echo "files are not readable" >&2
+		fi
+	fi
+}
+
+
+
+
+# NAME
+# 	multiply - multiplies two matrices with compatible dimensions 
+# SYNOPSIS
+#	Prints the product matrix, or an error if the dimensions aren't compatible
+# DESCRIPTION
+#	Takes an MxN and NxP matrix and produces an MxP matrix
+
+multiply ()
+{
+	multMatrix1="multMatrix1$$"
+	multMatrix2="multMatrix2$$"
+	productMatrix="productMatrix$$"
+
+	if [ $# -ne 2 ]
+	then 
+		echo "Invalid number of arguments. Use two arguments to use pass in two matrix files." >&2
+	else 
+		# check if both files are readable
+		if [ -r "$1" ] && [ -r "$2" ] 
+		then
+			# save parameters to file
+			cat "$1" > $multMatrix1
+			cat "$2" > $multMatrix2
+
+			# dimensions are in format "rowCount columnCount"
+			m1Dims=$(dims "$multMatrix1")
+			m2Dims=$(dims "$multMatrix2")
+
+			# check that m1 columns match m2 rows [MxN * NxP results in MxP matrix]
+			m1Col=$(echo $m1Dims | cut -d ' ' -f 2) 
+			m2Row=$(echo $m2Dims | cut -d ' ' -f 1) 
+			m2Col=$(echo $m2Dims | cut -d ' ' -f 2) 
+
+			if [ $m1Col == $m2Row ]
+			then
+				# loop through rows of matrix 1
+				while read row
+				do
+					# loop through columns of matrix 2
+					for ((i=1;i<="$m2Col";i++))
+					do
+						# get columns one by one from matrix 2 by cutting fields
+						currentCol=$(cut -f "$i" $multMatrix2)
+						prodSum=0
+
+						# sum products of m1 row and m2 column
+						for ((j=1;j<="$m1Col";j++))
+						do
+							m1val=$(echo "$row" | cut -f $j)
+							m2val=$(echo "$currentCol" | head -n $j | tail -n 1)
+
+							# multiply parallel values and add to running sum
+							prod=$(( m1val * m2val ))
+							prodSum=$(( $prodSum + $prod))
+						done
+						echo -ne "$prodSum\t" >> $productMatrix
+					done
+					# remove hanging tab and add newline to end of row
+					truncate -s-1 $productMatrix
+					echo "" >> $productMatrix
+
+				done < $multMatrix1
+				cat $productMatrix
+
+			else
+				echo "The matrix dimensions are not compatible for multiplication. The rows of one must match the columns of the other." >&2
+				exit 4
+			fi
+		else 
+			echo "files are not readable" >&2
+		fi
+	fi
+}
+
+
+
+# call the requested function with remaining args passed in
+$1 "${@:2}"
+
+
